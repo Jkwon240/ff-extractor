@@ -1,0 +1,12 @@
+{
+  "name": "ff-extractor",
+  "version": "1.0.0",
+  "dependencies": {
+    "next": "latest"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  }
+}
