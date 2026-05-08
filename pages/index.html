@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🚢 FF Data Extractor</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, sans-serif; background: #f0f2f5; min-height: 100vh; }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 20px; }
+.header { background: #1a1a2e; color: white; border-radius: 14px; padding: 18px 24px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+.header h1 { font-size: 20px; font-weight: 700; }
+.header p { font-size: 11px; opacity: 0.55; margin-top: 3px; }
+.card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); margin-bottom: 16px; }
+.bl-input { flex: 1; padding: 11px 16px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 15px; font-weight: 600; outline: none; transition: border-color 0.2s; }
+.bl-input:focus { border-color: #1a1a2e; }
+.btn-start { padding: 11px 24px; background: #1a1a2e; color: white; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; }
+.btn-start:disabled { background: #ccc; cursor: not-allowed; }
+.drop-zone { border: 2px dashed #d0d0d0; border-radius: 12px; padding: 32px 20px; text-align: center; cursor: pointer; background: #fafafa; transition: all 0.2s; }
+.drop-zone:hover, .drop-zone.drag { border-color: #1a1a2e; background: #f0f0ff; }
+.file-item { display: flex; align-items: center; gap: 8px; padding: 7px 12px; background: #f5f5f5; border-radius: 8px; margin-bottom: 6px; font-size: 13px; }
+.extract-btn { width: 100%; padding: 13px 0; background: #1a1a2e; color: white; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 4px; }
+.extract-btn:disabled { background: #ccc; cursor: not-allowed; }
+.tabs { display: flex; gap: 8px; margin-bottom: 18px; }
+.tab-btn { padding: 9px 20px; border-radius: 9px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; background: white; color: #888; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.tab-btn.active { background: #1a1a2e; color: white; }
+.tab-export { margin-left: auto; padding: 9px 16px; border-radius: 9px; border: 1px solid #ddd; background: white; color: #555; font-size: 13px; cursor: pointer; }
+.result-block { background: white; border-radius: 12px; padding: 20px; margin-bottom: 14px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+.field-row { display: flex; align-items: flex-start; padding: 7px 0; border-bottom: 1px solid #f5f5f5; gap: 12px; }
+.field-label { font-size: 12px; color: #aaa; min-width: 185px; flex-shrink: 0; padding-top: 1px; }
+.field-val { font-size: 13px; flex: 1; word-break: break-all; line-height: 1.6; color: #222; }
+.copy-btn { font-size: 11px; padding: 2px 10px; border-radius: 5px; border: 1px solid #e0e0e0; background: #fafafa; cursor: pointer; color: #666; white-space: nowrap; flex-shrink: 0; }
+.copy-btn.done { background: #e8f5e9; color: #2e7d32; }
+.check-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.check-table th { padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 700; border-bottom: 2px solid #eee; background: #f8f8f8; color: #666; }
+.check-table td { padding: 10px 14px; border-bottom: 1px solid #f0f0f0; vertical-align: top; line-height: 1.5; }
+.mismatch-row { background: #fff5f5; }
+.mismatch-val { color: #c62828; font-weight: 700; }
+.badge-red { background: #e53935; color: white; border-radius: 20px; padding: 4px 11px; font-size: 12px; font-weight: 700; }
+.alert { padding: 12px 16px; border-radius: 10px; font-size: 13px; font-weight: 600; margin-top: 16px; }
+.alert-green { background: #e8f5e9; color: #2e7d32; }
+.alert-red { background: #ffebee; color: #c62828; }
+.settings-panel { background: white; border-radius: 12px; padding: 18px; margin-bottom: 18px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); display: none; }
+.btn-ghost { background: rgba(255,255,255,0.12); color: white; border: none; border-radius: 8px; padding: 7px 14px; cursor: pointer; font-size: 13px; }
+.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.45); z-index: 1000; display: none; align-items: center; justify-content: center; padding: 20px; }
+.modal-overlay.open { display: flex; }
+.modal { background: white; border-radius: 14px; padding: 24px; max-width: 660px; width: 100%; max-height: 82vh; display: flex; flex-direction: column; }
+.modal textarea { flex: 1; min-height: 360px; font-family: monospace; font-size: 11px; border: 1px solid #eee; border-radius: 8px; padding: 12px; resize: none; outline: none; margin: 12px 0; }
+.empty-state { text-align: center; color: #ccc; padding: 50px 0; }
+.check-summary { display: flex; gap: 10px; margin-bottom: 20px; }
+.check-box { flex: 1; padding: 14px; border-radius: 10px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <div>
+      <h1>🚢 FF Data Extractor</h1>
+      <p>BL # 입력 → 파일 업로드 → 자동 추출 · 크로스체크</p>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span id="mismatch-badge" style="display:none" class="badge-red"></span>
+      <button class="btn-ghost" onclick="toggleSettings()">⚙️ Settings</button>
+    </div>
+  </div>
+
+  <div class="settings-panel" id="settings-panel">
+    <div style="font-size:13px;font-weight:700;margin-bottom:12px">⚙️ API Key 설정</div>
+    <label style="font-size:12px;color:#666;display:block;margin-bottom:5px">Anthropic API Key</label>
+    <div style="display:flex;gap:8px">
+      <input type="password" id="api-key-input" placeholder="sk-ant-..." style="flex:1;padding:9px 13px;border:1px solid #ddd;border-radius:8px;font-size:13px;outline:none">
+      <button onclick="saveApiKey()" style="padding:9px 18px;background:#1a1a2e;color:white;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-weight:600">저장</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="font-size:12px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">BL No. 입력</div>
+    <div style="display:flex;gap:10px">
+      <input type="text" class="bl-input" id="bl-input" placeholder="예) COSU1234567890" onkeydown="if(event.key==='Enter')startJob()">
+      <button class="btn-start" onclick="startJob()">시작</button>
+    </div>
+    <div id="bl-history-hint" style="margin-top:10px;display:none">
+      <div style="font-size:12px;color:#888;margin-bottom:6px">최근 작업</div>
+      <div id="bl-history-list"></div>
+    </div>
+  </div>
+
+  <div id="work-area" style="display:none">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div>
+          <span style="font-size:15px;font-weight:700;color:#1a1a2e" id="current-bl-label"></span>
+          <span style="font-size:12px;color:#aaa;margin-left:8px">파일을 한번에 올려주세요</span>
+        </div>
+        <button onclick="resetJob()" style="font-size:12px;padding:5px 12px;border-radius:6px;border:1px solid #eee;background:white;cursor:pointer;color:#888">초기화</button>
+      </div>
+      <div class="drop-zone" id="drop-zone"
+        onclick="document.getElementById('file-input').click()"
+        ondragover="event.preventDefault();this.classList.add('drag')"
+        ondragleave="this.classList.remove('drag')"
+        ondrop="handleDrop(event)">
+        <div style="font-size:36px;margin-bottom:8px">📂</div>
+        <div style="font-size:14px;color:#555;font-weight:600">MBL · HBL · CI · PL · 수출면장 한번에 드래그하거나 클릭</div>
+        <div style="font-size:12px;color:#aaa;margin-top:4px">PDF · JPG · PNG · XLSX · TXT · CSV</div>
+      </div>
+      <input type="file" id="file-input" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.xlsx,.xls,.txt,.csv" style="display:none" onchange="addFiles(this.files)">
+      <div id="file-list" style="margin-top:10px"></div>
+      <div id="upload-error" style="color:#c00;font-size:12px;margin:8px 0;display:none"></div>
+      <button class="extract-btn" id="extract-btn" onclick="extractAll()">🔍 추출하기</button>
+    </div>
+
+    <div class="tabs" id="result-tabs" style="display:none">
+      <button class="tab-btn active" id="tab-result" onclick="switchTab('result')">📋 추출 결과</button>
+      <button class="tab-btn" id="tab-check" onclick="switchTab('check')">🔍 크로스체크 <span id="check-badge"></span></button>
+      <button class="tab-export tab-btn" onclick="showExport()">📑 내보내기</button>
+    </div>
+    <div id="view-result" style="display:none"></div>
+    <div id="view-check" style="display:none"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="export-modal" onclick="if(event.target===this)closeExport()">
+  <div class="modal">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <span style="font-weight:700;font-size:15px">📋 전체 추출 내용</span>
+      <button onclick="closeExport()" style="border:none;background:none;font-size:22px;cursor:pointer;color:#aaa">✕</button>
+    </div>
+    <textarea id="export-text" readonly></textarea>
+    <button id="export-copy-btn" onclick="copyExport()" style="padding:11px 0;background:#1a1a2e;color:white;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer">📑 전체 복사</button>
+  </div>
+</div>
+
+<script>
+const ALL_FIELDS = [
+  {key:"shipper",label:"Shipper"},{key:"consignee",label:"Consignee"},{key:"notify_party",label:"Notify Party"},
+  {key:"port_of_loading",label:"Port of Loading (POL)"},{key:"port_of_discharge",label:"Port of Discharge (POD)"},
+  {key:"vessel",label:"Vessel / Voyage"},{key:"etd",label:"ETD"},{key:"eta",label:"ETA"},
+  {key:"container_no",label:"Container No."},{key:"seal_no",label:"Seal No."},
+  {key:"hs_code",label:"HS Code"},{key:"description",label:"Description of Goods"},
+  {key:"commodity",label:"Commodity"},{key:"gross_weight",label:"Gross Weight"},
+  {key:"measurement",label:"Measurement (CBM)"},{key:"package_count",label:"Package Count / Type"},
+  {key:"invoice_no",label:"Invoice No."},{key:"invoice_value",label:"Invoice Value"},
+  {key:"incoterms",label:"Incoterms"},{key:"freight_terms",label:"Freight Terms"},
+  {key:"shipper_ref",label:"Shipper's Ref / PO No."},{key:"bl_no",label:"B/L No."},
+];
+const CHECK_FIELDS = [
+  {key:"gross_weight",label:"Gross Weight"},{key:"package_count",label:"Package Count"},
+  {key:"container_no",label:"Container No."},{key:"seal_no",label:"Seal No."},
+  {key:"measurement",label:"Measurement (CBM)"},
+];
+const DOC_COLORS = {MBL:"#1a1a2e",HBL:"#1565c0","수출면장":"#6a1b9a",CI:"#2e7d32",PL:"#e65100",Invoice:"#bf360c","기타":"#546e7a"};
+
+let state = { blNo:"", files:[], results:[] };
+
+window.onload = () => {
+  document.getElementById("api-key-input").value = localStorage.getItem("ff_api_key")||"";
+  renderBLHistory();
+};
+
+function getApiKey() { return localStorage.getItem("ff_api_key")||""; }
+function saveApiKey() { localStorage.setItem("ff_api_key", document.getElementById("api-key-input").value.trim()); toggleSettings(); alert("저장됐어요!"); }
+function toggleSettings() { const p=document.getElementById("settings-panel"); p.style.display=p.style.display==="none"?"block":"none"; }
+
+function startJob() {
+  const bl = document.getElementById("bl-input").value.trim();
+  if (!bl) return;
+  state = { blNo:bl, files:[], results:[] };
+  document.getElementById("current-bl-label").textContent = "📦 "+bl;
+  document.getElementById("work-area").style.display = "block";
+  document.getElementById("result-tabs").style.display = "none";
+  document.getElementById("view-result").style.display = "none";
+  document.getElementById("view-check").style.display = "none";
+  document.getElementById("file-list").innerHTML = "";
+  document.getElementById("extract-btn").textContent = "🔍 추출하기";
+  document.getElementById("mismatch-badge").style.display = "none";
+}
+function resetJob() { state.files=[]; state.results=[]; document.getElementById("file-list").innerHTML=""; document.getElementById("result-tabs").style.display="none"; document.getElementById("view-result").style.display="none"; document.getElementById("view-check").style.display="none"; }
+
+function saveBLHistory(bl) {
+  let h=JSON.parse(localStorage.getItem("ff_bl_history")||"[]");
+  h=[bl,...h.filter(b=>b!==bl)].slice(0,8);
+  localStorage.setItem("ff_bl_history",JSON.stringify(h));
+}
+function renderBLHistory() {
+  const h=JSON.parse(localStorage.getItem("ff_bl_history")||"[]");
+  if(!h.length) return;
+  document.getElementById("bl-history-hint").style.display="block";
+  document.getElementById("bl-history-list").innerHTML=h.map(bl=>`<span onclick="loadBL('${bl}')" style="display:inline-block;padding:4px 10px;background:#f0f0f0;border-radius:20px;font-size:12px;cursor:pointer;margin:3px">${bl}</span>`).join("");
+}
+function loadBL(bl) { document.getElementById("bl-input").value=bl; startJob(); }
+
+const ALLOWED=["application/pdf","image/jpeg","image/png","image/webp","image/gif","text/plain","text/csv","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","application/vnd.ms-excel"];
+const FICONS={"application/pdf":"📄","image/jpeg":"🖼️","image/png":"🖼️","image/webp":"🖼️","text/plain":"📝","text/csv":"📝","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":"📊","application/vnd.ms-excel":"📊"};
+
+function addFiles(fl) {
+  const arr=Array.from(fl).filter(f=>ALLOWED.includes(f.type));
+  if(!arr.length){showErr("지원: PDF·JPG·PNG·XLSX·TXT·CSV");return;}
+  state.files.push(...arr); hideErr(); renderFileList();
+}
+function handleDrop(e) { e.preventDefault(); document.getElementById("drop-zone").classList.remove("drag"); addFiles(e.dataTransfer.files); }
+function removeFile(i) { state.files.splice(i,1); renderFileList(); }
+function renderFileList() {
+  document.getElementById("file-list").innerHTML=state.files.map((f,i)=>`
+    <div class="file-item">
+      <span>${FICONS[f.type]||"📎"}</span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.name}</span>
+      <span style="color:#bbb;font-size:11px">${(f.size/1024).toFixed(0)}KB</span>
+      <button onclick="removeFile(${i})" style="border:none;background:none;cursor:pointer;color:#ccc;font-size:16px">✕</button>
+    </div>`).join("");
+}
+function showErr(m){const e=document.getElementById("upload-error");e.textContent=m;e.style.display="block";}
+function hideErr(){document.getElementById("upload-error").style.display="none";}
+
+async function toBase64(f){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(",")[1]);r.onerror=rej;r.readAsDataURL(f);});}
+async function readText(f){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsText(f,"utf-8");});}
+
+async function fileToPart(f) {
+  if(f.type==="application/pdf"){const b=await toBase64(f);return{type:"document",source:{type:"base64",media_type:"application/pdf",data:b}};}
+  if(["image/jpeg","image/png","image/webp","image/gif"].includes(f.type)){const b=await toBase64(f);return{type:"image",source:{type:"base64",media_type:f.type,data:b}};}
+  if(["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","application/vnd.ms-excel"].includes(f.type)){
+    try{const ab=await f.arrayBuffer();const wb=XLSX.read(ab,{type:"array"});const txt=wb.SheetNames.map(n=>`[Sheet:${n}]\n${XLSX.utils.sheet_to_csv(wb.Sheets[n])}`).join("\n\n");return{type:"text",text:`[Excel:${f.name}]\n${txt}`};}
+    catch{return{type:"text",text:`[Excel:${f.name}] 파싱실패`};}
+  }
+  const txt=await readText(f);return{type:"text",text:`[${f.name}]\n${txt}`};
+}
+
+async function extractAll() {
+  if(!getApiKey()){showErr("Settings에서 API Key를 먼저 입력해주세요.");return;}
+  if(!state.files.length){showErr("파일을 먼저 올려주세요.");return;}
+  const btn=document.getElementById("extract-btn");
+  btn.textContent="⏳ 추출 중..."; btn.disabled=true; hideErr();
+  try {
+    const parts=await Promise.all(state.files.map(fileToPart));
+    const res=await fetch("/api/extract",{
+      method:"POST",
+      headers:{"Content-Type":"application/json","x-api-key":getApiKey()},
+      body:JSON.stringify({parts,blNo:state.blNo})
+    });
+    const data=await res.json();
+    if(data.error) throw new Error(data.error);
+    state.results=[...state.results,...data.results];
+    saveBLHistory(state.blNo); renderBLHistory();
+    document.getElementById("result-tabs").style.display="flex";
+    switchTab("result"); updateCheckBadge();
+  } catch(e){showErr("추출 실패: "+e.message);}
+  btn.textContent="🔍 추가 파일 추출"; btn.disabled=false;
+}
+
+function switchTab(tab) {
+  ["result","check"].forEach(t=>{
+    document.getElementById(`tab-${t}`).classList.toggle("active",t===tab);
+    document.getElementById(`view-${t}`).style.display=t===tab?"block":"none";
+  });
+  if(tab==="result") renderResults();
+  if(tab==="check") renderCheck();
+}
+
+function renderResults() {
+  const el=document.getElementById("view-result");
+  if(!state.results.length){el.innerHTML=`<div class="empty-state"><div style="font-size:40px;margin-bottom:12px">📋</div><div>추출된 결과가 없어요.</div></div>`;return;}
+  el.innerHTML=state.results.map((doc,di)=>{
+    const color=DOC_COLORS[doc.doc_type]||"#546e7a";
+    const rows=ALL_FIELDS.map(f=>{
+      const val=doc[f.key];
+      return `<div class="field-row">
+        <span class="field-label">${f.label}</span>
+        <span class="field-val" style="color:${val?"#222":"#ddd"}">${val?val.replace(/\n/g,"<br>"):"—"}</span>
+        ${val?`<button class="copy-btn" onclick="copyText(this,${JSON.stringify(val)})">복사</button>`:""}
+      </div>`;
+    }).join("");
+    return `<div class="result-block" style="border-left:4px solid ${color}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div>
+          <span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700;color:white;background:${color}">${doc.doc_type}</span>
+          ${doc.doc_label?`<span style="font-size:13px;color:#666;margin-left:8px">${doc.doc_label}</span>`:""}
+        </div>
+        <button class="copy-btn" onclick="copyBlock(${di})">블록 전체 복사</button>
+      </div>
+      ${rows}
+    </div>`;
+  }).join("");
+}
+
+function copyBlock(di){
+  const doc=state.results[di];
+  const txt=ALL_FIELDS.filter(f=>doc[f.key]).map(f=>`${f.label}: ${doc[f.key]}`).join("\n");
+  navigator.clipboard.writeText(txt);
+}
+function copyText(btn,text){
+  navigator.clipboard.writeText(text);
+  btn.textContent="✓";btn.classList.add("done");
+  setTimeout(()=>{btn.textContent="복사";btn.classList.remove("done");},1500);
+}
+
+function normalize(v){if(!v)return null;return v.toString().toLowerCase().replace(/\s+/g," ").replace(/,/g,"").trim();}
+function isSimilar(a,b){
+  if(!a||!b)return null;
+  const na=normalize(a),nb=normalize(b);
+  if(na===nb)return true;
+  const fa=parseFloat(na.replace(/[^0-9.]/g,"")),fb=parseFloat(nb.replace(/[^0-9.]/g,""));
+  if(!isNaN(fa)&&!isNaN(fb)&&fa>0)return Math.abs(fa-fb)<0.01;
+  if(na.includes(nb)||nb.includes(na))return true;
+  return false;
+}
+function crossCheck(){
+  const results={};
+  CHECK_FIELDS.forEach(field=>{
+    const entries=[];
+    state.results.forEach((doc,i)=>{if(doc[field.key])entries.push({label:doc.doc_type+(doc.doc_label?` (${doc.doc_label})`:""),val:doc[field.key],color:DOC_COLORS[doc.doc_type]||"#546e7a"});});
+    if(entries.length<2){results[field.key]={entries,status:"skip"};return;}
+    const vals=entries.map(e=>e.val);
+    results[field.key]={entries,status:vals.every(v=>isSimilar(v,vals[0]))?"ok":"mismatch"};
+  });
+  return results;
+}
+function updateCheckBadge(){
+  const r=crossCheck();
+  const mm=Object.values(r).filter(x=>x.status==="mismatch").length;
+  document.getElementById("check-badge").textContent=mm>0?` ❌${mm}`:state.results.length>=2?" ✅":"";
+  const b=document.getElementById("mismatch-badge");
+  if(mm>0){b.textContent=`❌ 불일치 ${mm}건`;b.style.display="inline";}else b.style.display="none";
+}
+function renderCheck(){
+  const el=document.getElementById("view-check");
+  if(state.results.length<2){el.innerHTML=`<div class="empty-state"><div style="font-size:40px;margin-bottom:12px">🔍</div><div>최소 2개 서류가 필요해요.</div></div>`;return;}
+  const r=crossCheck();
+  const ok=Object.values(r).filter(x=>x.status==="ok").length;
+  const mm=Object.values(r).filter(x=>x.status==="mismatch").length;
+  const sk=Object.values(r).filter(x=>x.status==="skip").length;
+  const allDocs=state.results.map((doc,i)=>({label:doc.doc_type+(doc.doc_label?` (${doc.doc_label})`:""),color:DOC_COLORS[doc.doc_type]||"#546e7a",idx:i}));
+  const thead=`<tr><th>항목</th>${allDocs.map(d=>`<th style="color:${d.color}">${d.label}</th>`).join("")}<th style="text-align:center">결과</th></tr>`;
+  const tbody=CHECK_FIELDS.map(field=>{
+    const chk=r[field.key];
+    const isMM=chk.status==="mismatch";
+    const cells=allDocs.map(d=>{
+      const entry=chk.entries.find(e=>e.label===d.label);
+      const val=entry?.val||null;
+      const differs=isMM&&val&&chk.entries.filter(e=>e!==entry).some(e=>!isSimilar(val,e.val));
+      return `<td class="${differs?"mismatch-val":""}">${val||'<span style="color:#ddd">—</span>'}</td>`;
+    }).join("");
+    const icon=chk.status==="ok"?"✅":chk.status==="mismatch"?"❌":`<span style="color:#ddd">—</span>`;
+    return `<tr class="${isMM?"mismatch-row":""}"><td style="font-weight:600;color:#444">${field.label}</td>${cells}<td style="text-align:center">${icon}</td></tr>`;
+  }).join("");
+  el.innerHTML=`<div class="card">
+    <div style="font-size:14px;font-weight:700;margin-bottom:16px">🔍 크로스체크 — ${state.blNo}</div>
+    <div class="check-summary">
+      <div class="check-box" style="background:#e8f5e9"><div style="font-size:26px;font-weight:800;color:#2e7d32">${ok}</div><div style="font-size:12px;color:#2e7d32">일치</div></div>
+      <div class="check-box" style="background:${mm>0?"#ffebee":"#f5f5f5"}"><div style="font-size:26px;font-weight:800;color:${mm>0?"#c62828":"#aaa"}">${mm}</div><div style="font-size:12px;color:${mm>0?"#c62828":"#aaa"}">불일치</div></div>
+      <div class="check-box" style="background:#f5f5f5"><div style="font-size:26px;font-weight:800;color:#aaa">${sk}</div><div style="font-size:12px;color:#aaa">데이터 부족</div></div>
+    </div>
+    <div style="overflow-x:auto"><table class="check-table"><thead>${thead}</thead><tbody>${tbody}</tbody></table></div>
+    ${mm>0?'<div class="alert alert-red">⚠️ 불일치 항목이 있어요. 서류를 다시 확인해주세요.</div>':'<div class="alert alert-green">✅ 체크 항목이 모두 일치해요!</div>'}
+  </div>`;
+}
+function showExport(){
+  if(!state.results.length){alert("추출된 결과가 없어요.");return;}
+  const lines=[`BL No: ${state.blNo}`,""]; 
+  state.results.forEach(doc=>{
+    lines.push(`=== ${doc.doc_type} ${doc.doc_label||""} ===`);
+    ALL_FIELDS.forEach(f=>{if(doc[f.key])lines.push(`${f.label}: ${doc[f.key]}`);});
+    lines.push("");
+  });
+  document.getElementById("export-text").value=lines.join("\n");
+  document.getElementById("export-modal").classList.add("open");
+}
+function closeExport(){document.getElementById("export-modal").classList.remove("open");}
+function copyExport(){
+  navigator.clipboard.writeText(document.getElementById("export-text").value);
+  const btn=document.getElementById("export-copy-btn");
+  btn.textContent="✅ 복사됨!";btn.style.background="#2e7d32";
+  setTimeout(()=>{btn.textContent="📑 전체 복사";btn.style.background="#1a1a2e";},2000);
+}
+</script>
+</body>
+</html>
