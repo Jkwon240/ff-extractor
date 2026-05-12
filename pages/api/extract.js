@@ -108,13 +108,13 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     const { blNo } = req.query;
     if (!blNo) return res.status(400).json({ error: 'blNo required' });
-    if (!hasRedis) return res.status(404).json({ error: 'Redis not configured' });
+    if (!hasRedis) return res.status(200).json({ unified: null });
     try {
       const job = await redisGet(kvUrl, kvToken, `job:${blNo}`);
-      if (!job) return res.status(404).json({ error: 'Not found' });
+      if (!job) return res.status(200).json({ unified: null });
       return res.status(200).json(job);
     } catch (e) {
-      return res.status(500).json({ error: e.message });
+      return res.status(200).json({ unified: null });
     }
   }
 
