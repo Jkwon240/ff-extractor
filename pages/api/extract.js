@@ -43,36 +43,60 @@ Return ONLY a valid JSON array. Each element represents one document:
 ]
 
 CRITICAL RULES:
-- shipper/consignee/notify_party: COMPLETE info — company name, full address, phone, fax, email. Do NOT truncate.
+- shipper/consignee/notify_party: COMPLETE info including company name, full address, phone, fax, email. Do NOT truncate.
 - description: FULL description exactly as written. Do NOT summarize or truncate. Every line, item, model, spec.
 - container_no: ALL numbers joined with " / "
 - seal_no: ALL numbers joined with " / "
 - container_type: e.g. "1 x 40HC", "2 x 20GP"
-- cy_code: 장치장 코드 or CY/CFS location code
-- doc_cutoff: 서류마감일시
-- cargo_cutoff: 반입마감일시
+- cy_code: 장치장 코드 or CY/CFS location
 - gross_weight/package_count/measurement: include units
 - If a field is not found use null
 - Return ONLY the JSON array, no markdown, no explanation`;
 
-async function redisCmd(url, token, path) {
-  const res = await fetch(`${url}/${path}`, {
+async function redisGet(url, token, key) {
+  const res = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
     headers: { Authorization: `Bearer ${token}` }
   });
   const data = await res.json();
-  return data.result;
+  return data.result ? JSON.parse(data.result) : null;
 }
 
 async function redisSet(url, token, key, value) {
-  const res = await fetch(`${url}/set/${encodeURIComponent(key)}/${encodeURIComponent(JSON.stringify(value))}`, {
+  await fetch(`${url}/set/${encodeURIComponent(key)}/${encodeURIComponent(JSON.stringify(value))}`, {
     headers: { Authorization: `Bearer ${token}` }
   });
-  return res.ok;
 }
 
-async function redisGet(url, token, key) {
-  const raw = await redisCmd(url, token, `get/${encodeURIComponent(key)}`);
-  return raw ? JSON.parse(raw) : null;
+// Merge raw doc results into unified field map
+// unified = { fieldKey: [ { value, sources: ["MBL", "CI"] } ] }
+function mergeIntoUnified(existing = {}, newDocs = []) {
+  const unified = JSON.parse(JSON.stringify(existing));
+
+  newDocs.forEach(doc => {
+    const src = doc.doc_type + (doc.doc_label ? ` (${doc.doc_label})` : '');
+    Object.keys(doc).forEach(key => {
+      if (['doc_type','doc_label'].includes(key)) return;
+      const val = doc[key];
+      if (!val) return;
+
+      if (!unified[key]) unified[key] = [];
+
+      // Check if this value already exists
+      const norm = v => v.toString().toLowerCase().replace(/\s+/g,' ').replace(/,/g,'').trim();
+      const existing_entry = unified[key].find(e => norm(e.value) === norm(val));
+      if (existing_entry) {
+        // Same value — just add source if not already there
+        if (!existing_entry.sources.includes(src)) {
+          existing_entry.sources.push(src);
+        }
+      } else {
+        // Different value — add as new entry
+        unified[key].push({ value: val, sources: [src] });
+      }
+    });
+  });
+
+  return unified;
 }
 
 export default async function handler(req, res) {
@@ -96,10 +120,9 @@ export default async function handler(req, res) {
 
   if (req.method !== 'POST') return res.status(405).end();
 
-  const { parts, blNo, existingResults } = req.body;
+  const { parts, blNo, existingUnified } = req.body;
   const apiKey = req.headers['x-api-key'];
   if (!apiKey) return res.status(401).json({ error: 'API key missing' });
-  if (!blNo) return res.status(400).json({ error: 'blNo required' });
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -128,17 +151,18 @@ export default async function handler(req, res) {
     if (data.error) return res.status(400).json({ error: data.error.message });
 
     const text = (data.content || []).map(b => b.text || '').join('');
-    const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
-    const newResults = Array.isArray(parsed) ? parsed : [parsed];
-    const allResults = [...(existingResults || []), ...newResults];
+    const newDocs = JSON.parse(text.replace(/```json|```/g, '').trim());
+    const docsArray = Array.isArray(newDocs) ? newDocs : [newDocs];
+
+    // Merge into unified
+    const unified = mergeIntoUnified(existingUnified || {}, docsArray);
 
     // Save to Redis
     if (hasRedis) {
       try {
         await redisSet(kvUrl, kvToken, `job:${blNo}`, {
-          blNo, results: allResults, updatedAt: new Date().toISOString()
+          blNo, unified, updatedAt: new Date().toISOString()
         });
-        // Update BL list
         const list = await redisGet(kvUrl, kvToken, 'bl_list') || [];
         const newList = [blNo, ...list.filter(b => b !== blNo)].slice(0, 200);
         await redisSet(kvUrl, kvToken, 'bl_list', newList);
@@ -147,7 +171,7 @@ export default async function handler(req, res) {
       }
     }
 
-    res.status(200).json({ results: newResults });
+    res.status(200).json({ unified });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
