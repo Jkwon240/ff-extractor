@@ -56,6 +56,7 @@ export default async function handler(req, res) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
         'anthropic-beta': 'pdfs-2024-09-25',
         'x-api-key': apiKey,
       },
