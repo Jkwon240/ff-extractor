@@ -25,8 +25,8 @@ Return ONLY a valid JSON array. Each element = one document:
 
 DOCUMENT-SPECIFIC RULES:
 - Booking Sheet: Extract ONLY: carrier, vessel, port_of_loading, port_of_discharge, etd, eta, booking_no, container_type, cy_code, doc_cutoff, cargo_cutoff, free_time. Set all others null.
-- CI (Commercial Invoice): Extract ONLY: shipper, consignee, notify_party, hs_code, description, commodity, package_count, invoice_no, invoice_value, incoterms, shipper_ref, gross_weight, measurement.
-- PL (Packing List): Extract ONLY: gross_weight, measurement, package_count, description, container_no, seal_no.
+- CI: Extract ONLY: shipper, consignee, notify_party, hs_code, description, commodity, package_count, invoice_no, invoice_value, incoterms, shipper_ref, gross_weight, measurement.
+- PL: Extract ONLY: gross_weight, measurement, package_count, description, container_no, seal_no.
 - 수출면장: Extract ONLY: shipper, consignee, hs_code, description, gross_weight, package_count, invoice_no, invoice_value, container_no.
 - MBL / HBL: Extract ALL fields available.
 - Invoice: Extract ONLY: invoice_no, invoice_value, shipper, consignee, description, hs_code, incoterms, shipper_ref.
@@ -52,6 +52,12 @@ async function redisGet(url, token, key) {
 
 async function redisSet(url, token, key, value) {
   await fetch(`${url}/set/${encodeURIComponent(key)}/${encodeURIComponent(JSON.stringify(value))}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+}
+
+async function redisDel(url, token, key) {
+  await fetch(`${url}/del/${encodeURIComponent(key)}`, {
     headers: { Authorization: `Bearer ${token}` }
   });
 }
@@ -82,6 +88,7 @@ export default async function handler(req, res) {
   const kvToken = process.env.KV_REST_API_TOKEN;
   const hasRedis = !!(kvUrl && kvToken);
 
+  // GET — load saved job
   if (req.method === 'GET') {
     const { blNo } = req.query;
     if (!blNo) return res.status(400).json({ error: 'blNo required' });
@@ -94,7 +101,21 @@ export default async function handler(req, res) {
     }
   }
 
-  // Save metadata (status, memo, manager)
+  // DELETE — remove a job
+  if (req.method === 'DELETE') {
+    const { blNo } = req.query;
+    if (!blNo || !hasRedis) return res.status(400).json({ error: 'invalid' });
+    try {
+      await redisDel(kvUrl, kvToken, `job:${blNo}`);
+      const list = await redisGet(kvUrl, kvToken, 'bl_list') || [];
+      await redisSet(kvUrl, kvToken, 'bl_list', list.filter(b => b !== blNo));
+      return res.status(200).json({ ok: true });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // PATCH — save metadata (status, memo, manager)
   if (req.method === 'PATCH') {
     const { blNo, status, memo, manager } = req.body;
     if (!blNo || !hasRedis) return res.status(400).json({ error: 'invalid' });
@@ -108,7 +129,7 @@ export default async function handler(req, res) {
     }
   }
 
-  // Save field edit
+  // PUT — save field edit or delete entry
   if (req.method === 'PUT') {
     const { blNo, fieldKey, value, source, allEntries } = req.body;
     if (!blNo || !hasRedis) return res.status(400).json({ error: 'invalid' });
@@ -116,10 +137,8 @@ export default async function handler(req, res) {
       const job = await redisGet(kvUrl, kvToken, `job:${blNo}`) || { blNo, unified: {} };
       if (!job.unified) job.unified = {};
       if (allEntries !== undefined) {
-        // Delete entry mode — save all remaining entries
         job.unified[fieldKey] = allEntries;
       } else {
-        // Edit mode — replace with single value
         job.unified[fieldKey] = value ? [{ value, sources: [source || '직접입력'] }] : [];
       }
       job.updatedAt = new Date().toISOString();
