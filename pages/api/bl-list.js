@@ -1,28 +1,38 @@
 export default async function handler(req, res) {
   const url = process.env.KV_REST_API_URL;
   const token = process.env.KV_REST_API_TOKEN;
-
-  if (!url || !token) return res.status(200).json({ list: [] });
+  if (!url || !token) return res.status(200).json({ list: [], statusMap: {} });
 
   try {
     const r = await fetch(`${url}/get/bl_list`, {
       headers: { Authorization: `Bearer ${token}` }
     });
     const data = await r.json();
-
     let list = [];
     if (data.result) {
-      // result가 문자열이면 파싱, 이미 배열이면 그대로
-      if (typeof data.result === 'string') {
-        list = JSON.parse(data.result);
-      } else if (Array.isArray(data.result)) {
-        list = data.result;
-      }
+      list = typeof data.result === 'string' ? JSON.parse(data.result) : data.result;
     }
 
-    res.status(200).json({ list });
+    // Fetch status for each BL (batch via mget)
+    let statusMap = {};
+    if (list.length > 0) {
+      const keys = list.map(bl => `job:${bl}`);
+      const mgetRes = await fetch(`${url}/mget/${keys.map(k => encodeURIComponent(k)).join('/')}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const mgetData = await mgetRes.json();
+      const results = mgetData.result || [];
+      list.forEach((bl, i) => {
+        try {
+          const job = results[i] ? JSON.parse(results[i]) : null;
+          if (job?.status) statusMap[bl] = job.status;
+        } catch {}
+      });
+    }
+
+    res.status(200).json({ list, statusMap });
   } catch (e) {
     console.error('bl-list error:', e.message);
-    res.status(200).json({ list: [] });
+    res.status(200).json({ list: [], statusMap: {} });
   }
 }
