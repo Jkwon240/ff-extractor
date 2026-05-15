@@ -110,12 +110,18 @@ export default async function handler(req, res) {
 
   // Save field edit
   if (req.method === 'PUT') {
-    const { blNo, fieldKey, value, source } = req.body;
+    const { blNo, fieldKey, value, source, allEntries } = req.body;
     if (!blNo || !hasRedis) return res.status(400).json({ error: 'invalid' });
     try {
       const job = await redisGet(kvUrl, kvToken, `job:${blNo}`) || { blNo, unified: {} };
       if (!job.unified) job.unified = {};
-      job.unified[fieldKey] = [{ value, sources: [source || '직접입력'] }];
+      if (allEntries !== undefined) {
+        // Delete entry mode — save all remaining entries
+        job.unified[fieldKey] = allEntries;
+      } else {
+        // Edit mode — replace with single value
+        job.unified[fieldKey] = value ? [{ value, sources: [source || '직접입력'] }] : [];
+      }
       job.updatedAt = new Date().toISOString();
       await redisSet(kvUrl, kvToken, `job:${blNo}`, job);
       return res.status(200).json({ ok: true, unified: job.unified });
