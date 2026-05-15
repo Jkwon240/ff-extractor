@@ -93,7 +93,7 @@ function DdayBadge({ dateStr }) {
 }
 
 export default function Home() {
-  const [apiKey, setApiKey] = useState("");
+  const [apiKey, setApiKey] = useState(() => typeof window !== 'undefined' ? localStorage.getItem("ff_api_key") || "" : "");
   const [showSettings, setShowSettings] = useState(false);
   const [blNo, setBlNo] = useState("");
   const [activeBlNo, setActiveBlNo] = useState("");
@@ -190,6 +190,20 @@ export default function Home() {
       if (d.unified) setUnified(d.unified);
     } catch {}
     setEditingField(null);
+  };
+
+  const deleteEntry = async (fieldKey, idx) => {
+    const newEntries = (unified[fieldKey] || []).filter((_, i) => i !== idx);
+    const newUnified = { ...unified, [fieldKey]: newEntries };
+    setUnified(newUnified);
+    // Save to Redis
+    try {
+      await fetch("/api/extract", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ blNo: activeBlNo, fieldKey, value: newEntries[0]?.value || null, source: newEntries[0]?.sources?.[0] || "직접입력", allEntries: newEntries }),
+      });
+    } catch {}
   };
 
   const copyText = (key, val) => {
@@ -378,7 +392,8 @@ Booking No: ${getFirstVal("booking_no")}`;
                 <div style={{ display: "flex", gap: 8 }}>
                   <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-ant-..."
                     style={{ flex: 1, padding: "9px 13px", border: "1px solid #ddd", borderRadius: 8, fontSize: 13, outline: "none" }} />
-                  <button onClick={() => setShowSettings(false)} style={{ padding: "9px 18px", background: "#1a1a2e", color: "white", border: "none", borderRadius: 8, fontSize: 13, cursor: "pointer", fontWeight: 600 }}>확인</button>
+                  <button onClick={() => { localStorage.setItem("ff_api_key", apiKey); setShowSettings(false); alert("저장됐어요!"); }}
+                    style={{ padding: "9px 18px", background: "#1a1a2e", color: "white", border: "none", borderRadius: 8, fontSize: 13, cursor: "pointer", fontWeight: 600 }}>저장</button>
                 </div>
               </div>
             )}
